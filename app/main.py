@@ -4,8 +4,15 @@ import re
 import urllib.error
 import urllib.request
 import json
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from pathlib import Path
 
 app = FastAPI()
+BASE_DIR = Path(__file__).resolve().parent.parent
+STATIC_DIR = BASE_DIR / "static"
+
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 class RepoRequest(BaseModel):
@@ -49,18 +56,28 @@ def check_readme(request: RepoRequest):
 
     except urllib.error.HTTPError as error:
         if error.code == 404:
+            repo_check_url = f"https://api.github.com/repos/{owner}/{repo}"
+            repo_req = urllib.request.Request(
+            repo_check_url,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "README-Checker"
+            }
+        )
+
+        try:
+            with urllib.request.urlopen(repo_req, timeout=10):
+                return {
+                    "result": "FAIL",
+                    "reason": "README.md not found in the repository root"
+                }
+        except urllib.error.HTTPError:
             return {
                 "result": "FAIL",
-                "reason": "Repository or README.md not found, or repository is inaccessible"
-        }
+                "reason": "Repository not found or inaccessible"
+            }
 
-        return {
-            "result": "FAIL",
-            "reason": f"GitHub returned HTTP {error.code}"
+    return {
+        "result": "FAIL",
+        "reason": f"GitHub returned HTTP {error.code}"
     }
-
-    except Exception:
-        return {
-            "result": "FAIL",
-            "reason": "Could not connect to GitHub"
-        }
