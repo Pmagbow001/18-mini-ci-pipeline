@@ -21,7 +21,7 @@ class RepoRequest(BaseModel):
 
 @app.get("/")
 def home():
-   return {"message": "README Checker is running!"}
+    return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.post("/api/check-readme")
