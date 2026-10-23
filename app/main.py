@@ -1,83 +1,51 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
-import re
-import urllib.error
-import urllib.request
-import json
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from __future__ import annotations
+
 from pathlib import Path
 
-app = FastAPI()
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
+
+from app.pipeline import check_readme
+
+app = FastAPI(title="GitHub README Checker")
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://netlify.app",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_origin_regex=r"https://.*\.netlify\.app",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 class RepoRequest(BaseModel):
-   repo_url: str
+    repo_url: str = Field(..., min_length=1, max_length=500)
 
 
 @app.get("/")
-def home():
+def home() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.post("/api/check-readme")
-def check_readme(request: RepoRequest):
-    pattern = r"^https://github\.com/([^/]+)/([^/]+)/?$"
-    match = re.match(pattern, request.repo_url.strip())
+def check_readme_endpoint(request: RepoRequest):
+    return check_readme(request.repo_url)
 
-    if not match:
-        return {"result": "FAIL", "reason": "Invalid GitHub repository URL"}
 
-    owner, repo = match.groups()
-    repo = repo.removesuffix(".git")
+if __name__ == "__main__":
+    import uvicorn
 
-    api_url = f"https://api.github.com/repos/{owner}/{repo}/readme"
-
-    req = urllib.request.Request(
-        api_url,
-        headers={"Accept": "application/vnd.github+json",
-                 "User-Agent": "README-Checker"}
-    )
-
-    try:
-        with urllib.request.urlopen(req, timeout=10) as response:
-            data = json.loads(response.read().decode())
-            if data.get("path", "").lower() == "readme.md":
-                return {"result": "PASS"}
-
-            return {
-                "result": "FAIL",
-                "reason": "No README.md found in the repository root"
-            }
-
-    except urllib.error.HTTPError as error:
-        if error.code == 404:
-            repo_check_url = f"https://api.github.com/repos/{owner}/{repo}"
-            repo_req = urllib.request.Request(
-            repo_check_url,
-            headers={
-                "Accept": "application/vnd.github+json",
-                "User-Agent": "README-Checker"
-            }
-        )
-
-        try:
-            with urllib.request.urlopen(repo_req, timeout=10):
-                return {
-                    "result": "FAIL",
-                    "reason": "README.md not found in the repository root"
-                }
-        except urllib.error.HTTPError:
-            return {
-                "result": "FAIL",
-                "reason": "Repository not found or inaccessible"
-            }
-
-    return {
-        "result": "FAIL",
-        "reason": f"GitHub returned HTTP {error.code}"
-    }
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
