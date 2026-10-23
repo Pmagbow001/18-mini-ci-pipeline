@@ -1,4 +1,5 @@
-const API_BASE_URL = "https://your-render-service-name.onrender.com";
+const API_BASE_URL = "https://one8-mini-ci-pipeline-cpe1.onrender.com";
+
 
 const repoInput = document.getElementById("repo-url");
 const checkButton = document.getElementById("check-button");
